@@ -15,7 +15,6 @@ from PyQt5.QtCore import Qt, QMimeData
 from PyQt5.QtGui import QDragEnterEvent, QDropEvent, QFont
 
 from core.analyzer import JPEGAnalyzer
-from a4_grid_analyzer import A4GridAnalyzer
 from a4_measure_final import A4MeasureFinal
 
 

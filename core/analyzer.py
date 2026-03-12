@@ -19,6 +19,8 @@ import os
 import warnings
 warnings.filterwarnings('ignore')
 
+from . import cdistance
+
 
 class JPEGAnalyzer:
     """JPEG图像分析器 - 核心算法类"""
@@ -166,62 +168,14 @@ class JPEGAnalyzer:
         Task 2.3.2: 检测水平黑线 (Y 轴方向 - 从顶部边缘)
         使用投影法找第一条黑线，返回线条中心位置
         """
-        h, w = self.roi.shape
-        
-        vertical_projection = np.sum(self.binary, axis=1) / 255
-        
-        threshold = w * 0.3
-        
-        in_line = False
-        line_start = 0
-        line_end = 0
-        
-        for y in range(h):
-            if vertical_projection[y] > threshold:
-                if not in_line:
-                    line_start = y
-                    in_line = True
-            else:
-                if in_line:
-                    line_end = y
-                    line_center = (line_start + line_end) // 2
-                    return line_center
-        
-        if in_line:
-            return line_start
-        
-        return -1
+        return cdistance.detect_horizontal_line(self.binary)
     
     def _detect_vertical_line(self):
         """
         Task 2.3.3: 检测垂直黑线 (X 轴方向 - 从左侧边缘)
         使用投影法找第一条黑线，返回线条中心位置
         """
-        h, w = self.roi.shape
-        
-        horizontal_projection = np.sum(self.binary, axis=0) / 255
-        
-        threshold = h * 0.3
-        
-        in_line = False
-        line_start = 0
-        line_end = 0
-        
-        for x in range(w):
-            if horizontal_projection[x] > threshold:
-                if not in_line:
-                    line_start = x
-                    in_line = True
-            else:
-                if in_line:
-                    line_end = x
-                    line_center = (line_start + line_end) // 2
-                    return line_center
-        
-        if in_line:
-            return line_start
-        
-        return -1
+        return cdistance.detect_vertical_line(self.binary)
     
     def _verify_line_straightness(self, position, direction):
         """
@@ -246,39 +200,14 @@ class JPEGAnalyzer:
         Task 2.4.1: 像素距离转换为物理距离
         公式: distance_mm = pixel_distance * 25.4 / dpi
         """
-        return round(pixels * 25.4 / self.dpi, 1)
+        return cdistance.pixels_to_mm(pixels, self.dpi)
     
     def _calculate_confidence(self, line_pos, dimension, axis):
         """
         Task 2.4.2: 置信度评估
         基于线条黑度、线条连续性、背景对比度
         """
-        h, w = self.roi.shape
-        
-        if axis == 'y':
-            line_region = self.binary[max(0, line_pos-5):min(h, line_pos+5), :]
-            gray_region = self.roi[max(0, line_pos-5):min(h, line_pos+5), :]
-        else:
-            line_region = self.binary[:, max(0, line_pos-5):min(w, line_pos+5)]
-            gray_region = self.roi[:, max(0, line_pos-5):min(w, line_pos+5)]
-        
-        if line_region.size == 0:
-            return 50
-        
-        black_density = np.sum(line_region > 0) / line_region.size
-        
-        gray_value = np.mean(gray_region)
-        contrast = (255 - gray_value) / 255
-        
-        continuity = black_density
-        
-        confidence = min(100, int(
-            (black_density * 40 + 
-             contrast * 30 + 
-             continuity * 30)
-        ))
-        
-        return max(10, confidence)
+        return cdistance.calculate_confidence(self.binary, self.roi, line_pos, dimension, axis)
     
     def get_result_text(self):
         """
