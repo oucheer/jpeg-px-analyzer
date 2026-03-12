@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-JPEG黑线检测工具
+JPEG黑线检测工具 - 优化版 (C语言核心)
 """
 
 import cv2
@@ -9,6 +9,12 @@ from PIL import Image
 from PIL.ExifTags import TAGS
 import os
 import datetime
+
+try:
+    from core.line_detector import detect_lines as c_detect_lines, pixels_to_mm as c_pixels_to_mm
+    C_EXTENSION_AVAILABLE = True
+except ImportError:
+    C_EXTENSION_AVAILABLE = False
 
 
 class UniversalMeasureTool:
@@ -20,17 +26,14 @@ class UniversalMeasureTool:
         self.dpi = 600
         self.filename = ""
         
-        # 结果
         self.horizontal_mm = 0.0
         self.vertical_mm = 0.0
         self.horizontal_px = 0
         self.vertical_px = 0
         
-        # 状态
         self.status = "FAIL"
         self.error_message = ""
         
-        # 调试信息
         self.debug_info = {}
     
     def load_image(self, filepath):
@@ -56,7 +59,6 @@ class UniversalMeasureTool:
             self.error_message = "文件损坏"
             return False
         
-        # 尝试获取 DPI
         self.dpi = self._get_dpi(filepath)
         
         return True
@@ -81,64 +83,96 @@ class UniversalMeasureTool:
         except:
             pass
         
-        return 600  # 默认 DPI
+        return 600
     
     def find_lines(self):
-        """查找线条位置"""
+        """查找线条位置 - 使用C语言实现"""
+        if C_EXTENSION_AVAILABLE:
+            return self._find_lines_c()
+        else:
+            return self._find_lines_python()
+    
+    def _find_lines_c(self):
+        """使用C扩展查找线条"""
+        try:
+            edge_margin = 15
+            vertical_px, horizontal_px = c_detect_lines(self.gray, edge_margin)
+            
+            if vertical_px is not None and horizontal_px is not None:
+                self.vertical_px = vertical_px
+                self.horizontal_px = horizontal_px
+                
+                self.horizontal_mm = round(horizontal_px * 25.4 / self.dpi, 2)
+                self.vertical_mm = round(vertical_px * 25.4 / self.dpi, 2)
+                
+                if vertical_px < edge_margin * 2:
+                    return self._find_lines_python()
+                
+                self.debug_info['method'] = 'c_extension'
+                return True
+        except Exception as e:
+            self.debug_info['c_error'] = str(e)
+        
+        return self._find_lines_python()
+    
+    def _find_lines_python(self):
+        """Python实现的后备算法"""
         h, w = self.gray.shape
         
-        # 分析左上角区域
-        for search_size in [300, 400, 500]:
-            roi_w = min(search_size, w // 3)
-            roi_h = min(search_size, h // 3)
-            roi = self.gray[0:roi_h, 0:roi_w]
+        blurred = cv2.GaussianBlur(self.gray, (3, 3), 0)
+        edges = cv2.Canny(blurred, 50, 150)
+        
+        v_proj = np.sum(edges, axis=0)
+        h_proj = np.sum(edges, axis=1)
+        
+        edge_margin = 15
+        min_valid_peak = 50
+        
+        def find_first_peak(proj, min_pos):
+            max_val = np.max(proj)
+            if max_val == 0:
+                return None
             
-            # 边缘检测
-            edges = cv2.Canny(roi, 30, 100)
+            threshold = max_val * 0.10
+            for i in range(min_pos, len(proj) - 2):
+                if proj[i] > threshold:
+                    if (proj[i] >= proj[i-1] and proj[i] >= proj[i-2] and
+                        proj[i] >= proj[i+1] and proj[i] >= proj[i+2]):
+                        return i
+            return None
+        
+        x_line = find_first_peak(v_proj, min_valid_peak)
+        y_line = find_first_peak(h_proj, min_valid_peak)
+        
+        if x_line is None or y_line is None:
+            row_means = np.mean(blurred, axis=1)
+            col_means = np.mean(blurred, axis=0)
             
-            # 投影分析
-            v_proj = np.sum(edges, axis=0)
-            h_proj = np.sum(edges, axis=1)
+            bg_row = np.mean(row_means[-50:])
+            bg_col = np.mean(col_means[-50:])
             
-            # 找峰值
-            threshold = 0.15
-            max_v = np.max(v_proj)
-            max_h = np.max(h_proj)
+            dark_rows = np.where(row_means < bg_row * 0.85)[0]
+            dark_cols = np.where(col_means < bg_col * 0.85)[0]
             
-            if max_v > 0:
-                v_peaks = []
-                for i in range(2, len(v_proj)-2):
-                    if v_proj[i] > max_v * threshold:
-                        if (v_proj[i] >= v_proj[i-1] and v_proj[i] >= v_proj[i-2] and
-                            v_proj[i] >= v_proj[i+1] and v_proj[i] >= v_proj[i+2]):
-                            v_peaks.append(i)
-                
-                if v_peaks:
-                    x_line = v_peaks[0]
-                    self.debug_info['v_peaks'] = v_peaks
+            if x_line is None:
+                valid_cols = dark_cols[dark_cols > edge_margin]
+                if len(valid_cols) > 0:
+                    x_line = int(valid_cols[0])
             
-            if max_h > 0:
-                h_peaks = []
-                for i in range(2, len(h_proj)-2):
-                    if h_proj[i] > max_h * threshold:
-                        if (h_proj[i] >= h_proj[i-1] and h_proj[i] >= h_proj[i-2] and
-                            h_proj[i] >= h_proj[i+1] and h_proj[i] >= h_proj[i+2]):
-                            h_peaks.append(i)
-                
-                if h_peaks:
-                    y_line = h_peaks[0]
-                    self.debug_info['h_peaks'] = h_peaks
+            if y_line is None:
+                valid_rows = dark_rows[dark_rows > edge_margin]
+                if len(valid_rows) > 0:
+                    y_line = int(valid_rows[0])
+        
+        if x_line is not None and y_line is not None:
+            self.vertical_px = x_line
+            self.horizontal_px = y_line
             
-            if 'x_line' in dir() and 'y_line' in dir():
-                self.horizontal_px = y_line
-                self.vertical_px = x_line
-                
-                # 转换为毫米
-                self.horizontal_mm = round(y_line * 25.4 / self.dpi, 2)
-                self.vertical_mm = round(x_line * 25.4 / self.dpi, 2)
-                
-                self.debug_info['method'] = 'peak_detection'
-                return True
+            self.horizontal_mm = round(y_line * 25.4 / self.dpi, 2)
+            self.vertical_mm = round(x_line * 25.4 / self.dpi, 2)
+            
+            self.debug_info['method'] = 'python_fallback'
+            return True
         
         return False
     
@@ -147,34 +181,8 @@ class UniversalMeasureTool:
         if self.gray is None:
             return False
         
-        # 尝试找线条
         if self.find_lines():
             self.status = "SUCCESS"
-            return True
-        
-        # 备选：暗区检测
-        h, w = self.gray.shape
-        roi_w = min(400, w // 4)
-        roi_h = min(400, h // 4)
-        roi = self.gray[0:roi_h, 0:roi_w]
-        
-        row_means = np.mean(roi, axis=1)
-        col_means = np.mean(roi, axis=0)
-        
-        threshold = np.mean(row_means) * 0.90
-        
-        dark_rows = np.where(row_means < threshold)[0]
-        dark_cols = np.where(col_means < threshold)[0]
-        
-        if len(dark_rows) > 0 and len(dark_cols) > 0:
-            self.horizontal_px = int(dark_rows[0])
-            self.vertical_px = int(dark_cols[0])
-            
-            self.horizontal_mm = round(self.horizontal_px * 25.4 / self.dpi, 2)
-            self.vertical_mm = round(self.vertical_px * 25.4 / self.dpi, 2)
-            
-            self.status = "SUCCESS"
-            self.debug_info['method'] = 'dark_region'
             return True
         
         self.error_message = "未检测到线条"
@@ -192,6 +200,7 @@ class UniversalMeasureTool:
         r.append(f"图像尺寸: {self.gray.shape[1]} × {self.gray.shape[0]} 像素")
         r.append(f"DPI: {self.dpi}")
         r.append(f"检测方法: {self.debug_info.get('method', 'N/A')}")
+        r.append(f"C扩展: {'已加载' if C_EXTENSION_AVAILABLE else '未加载'}")
         
         if self.status == "SUCCESS":
             r.append("\n" + "-" * 60)

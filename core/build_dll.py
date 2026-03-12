@@ -12,9 +12,9 @@ def build_dll():
     base_dir = os.path.dirname(os.path.abspath(__file__))
     src_dir = os.path.join(base_dir, "distance")
 
-    c_file = os.path.join(src_dir, "distance_calculator.c")
-    h_file = os.path.join(src_dir, "distance_calculator.h")
-    output_dll = os.path.join(base_dir, "distance_calculator.dll")
+    c_file = os.path.join(src_dir, "line_detector.c")
+    h_file = os.path.join(src_dir, "line_detector.h")
+    output_dll = os.path.join(src_dir, "line_detector.dll")
 
     if not os.path.exists(c_file):
         print(f"Error: Source file not found: {c_file}")
@@ -28,7 +28,7 @@ def build_dll():
     cmd = [
         gcc_path,
         "-shared",
-        "-O2",
+        "-O3",
         "-fPIC",
         "-o", output_dll,
         c_file,
