@@ -5,7 +5,7 @@ a = Analysis(
     ['main.py'],
     pathex=[],
     binaries=[],
-    datas=[('core', 'core')],
+    datas=[('core', 'core'), ('core/distance_calculator.dll', 'core'), ('universal_measure.py', '.')],
     hiddenimports=['PyQt5.QtCore', 'PyQt5.QtGui', 'PyQt5.QtWidgets', 'cv2', 'numpy', 'PIL', 'PIL.ExifTags'],
     hookspath=[],
     hooksconfig={},

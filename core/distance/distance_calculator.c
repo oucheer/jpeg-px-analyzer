@@ -92,10 +92,10 @@ int detect_vertical_line(
                 sum++;
             }
         }
-        horizontal_projection[x] = (float)sum / 255.0f;
+        horizontal_projection[x] = (float)sum;
     }
 
-    float threshold = height * 0.3f;
+    float threshold = (float)height * 0.3f;
 
     int in_line = 0;
     int line_start = 0;

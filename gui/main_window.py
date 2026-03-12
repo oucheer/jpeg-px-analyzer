@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-A4 纸张测量工具 - GUI 版本
-支持手动输入实际距离参数
+JPEG黑线检测工具 - GUI
 """
 
 import sys
@@ -9,13 +8,11 @@ import os
 import datetime
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                              QHBoxLayout, QPushButton, QLabel, QTextEdit,
-                             QFileDialog, QMessageBox, QTabWidget, QLineEdit,
-                             QFormLayout, QDoubleSpinBox)
+                             QFileDialog, QMessageBox)
 from PyQt5.QtCore import Qt, QMimeData
 from PyQt5.QtGui import QDragEnterEvent, QDropEvent, QFont
 
-from core.analyzer import JPEGAnalyzer
-from a4_measure_final import A4MeasureFinal
+from universal_measure import UniversalMeasureTool
 
 
 class DropLabel(QLabel):
@@ -82,12 +79,12 @@ class DropLabel(QLabel):
                 QMessageBox.warning(self, "警告", "仅支持 JPEG 格式文件！")
 
 
-class AutoMeasureWidget(QWidget):
-    """自动测量组件 - 支持自定义 DPI"""
+class MeasureWidget(QWidget):
+    """测量组件"""
     
     def __init__(self):
         super().__init__()
-        self.analyzer = A4MeasureFinal()
+        self.tool = UniversalMeasureTool()
         self.init_ui()
     
     def init_ui(self):
@@ -128,13 +125,13 @@ class AutoMeasureWidget(QWidget):
         
         self.result_text = QTextEdit()
         self.result_text.setReadOnly(True)
-        self.result_text.setMinimumHeight(180)
-        self.result_text.setPlaceholderText("自动检测结果将显示在这里...")
+        self.result_text.setMinimumHeight(200)
+        self.result_text.setPlaceholderText("测量结果将显示在这里...")
         self.result_text.setFont(QFont("Consolas", 10))
         layout.addWidget(self.result_text)
         
         # 状态栏
-        self.status_label = QLabel("就绪 - 请拖放图像或点击按钮选择文件")
+        self.status_label = QLabel("就绪 - 请拖放图像")
         self.status_label.setStyleSheet("color: #666;")
         layout.addWidget(self.status_label)
         
@@ -158,22 +155,21 @@ class AutoMeasureWidget(QWidget):
         
         self.current_file = file_path
         
-        self.status_label.setText("正在自动检测...")
+        self.status_label.setText("正在处理...")
         self.status_label.setStyleSheet("color: #2196F3;")
         self.result_text.clear()
         
         try:
-            # 自动检测计算 - 自动读取图像 DPI
-            self.analyzer = A4MeasureFinal()  # 自动读取 EXIF DPI
-            self.current_result = self.analyzer.process(file_path)
+            self.tool = UniversalMeasureTool()
+            self.current_result = self.tool.process(file_path)
             self.result_text.setText(self.current_result)
             self.save_button.setEnabled(True)
             
-            if self.analyzer.status == "SUCCESS":
-                self.status_label.setText("自动检测完成")
+            if self.tool.status == "SUCCESS":
+                self.status_label.setText("测量完成")
                 self.status_label.setStyleSheet("color: #4CAF50;")
             else:
-                self.status_label.setText(f"检测失败 - {self.analyzer.error_message}")
+                self.status_label.setText(f"测量失败 - {self.tool.error_message}")
                 self.status_label.setStyleSheet("color: #f44336;")
                 
         except Exception as e:
@@ -208,8 +204,8 @@ class MainWindow(QMainWindow):
         self.init_ui()
     
     def init_ui(self):
-        self.setWindowTitle("A4 纸张精确测量工具 v5.0")
-        self.setMinimumSize(700, 680)
+        self.setWindowTitle("JPEG黑线检测工具")
+        self.setMinimumSize(700, 700)
         self.setStyleSheet("""
             QMainWindow { background-color: #ffffff; }
             QPushButton {
@@ -222,12 +218,6 @@ class MainWindow(QMainWindow):
                 font-family: Consolas, monospace; font-size: 11px;
                 background-color: #fafafa;
             }
-            QTabWidget::pane { border: 1px solid #ddd; background-color: white; }
-            QTabBar::tab {
-                background-color: #f0f0f0; padding: 8px 16px; margin-right: 2px;
-            }
-            QTabBar::tab:selected { background-color: white; border-bottom: 2px solid #2196F3; }
-            QLabel { color: #333; }
         """)
         
         central_widget = QWidget()
@@ -237,7 +227,7 @@ class MainWindow(QMainWindow):
         main_layout.setContentsMargins(0, 0, 0, 0)
         
         # 标题
-        title_label = QLabel("A4 纸张精确测量工具")
+        title_label = QLabel("JPEG黑线检测工具")
         title_font = QFont()
         title_font.setPointSize(18)
         title_font.setBold(True)
@@ -246,19 +236,14 @@ class MainWindow(QMainWindow):
         title_label.setStyleSheet("color: #333; padding: 10px;")
         main_layout.addWidget(title_label)
         
-        # 说明
-        info_label = QLabel(
-            "✨ 自动检测模式\n"
-            "   工具将自动识别图像中的线条并计算距离\n"
-            "   水平距离 = 纸张上边缘到横线的距离\n"
-            "   垂直距离 = 纸张左边缘到竖线的距离"
-        )
-        info_label.setStyleSheet("color: #666; font-size: 11px; padding: 10px; background-color: #e3f2fd;")
-        info_label.setAlignment(Qt.AlignCenter)
-        main_layout.addWidget(info_label)
+        # 副标题
+        subtitle = QLabel("自动识别图像中的线条并计算距离")
+        subtitle.setAlignment(Qt.AlignCenter)
+        subtitle.setStyleSheet("color: #666; font-size: 12px; padding-bottom: 10px;")
+        main_layout.addWidget(subtitle)
         
         # 主测量组件
-        self.measure_widget = AutoMeasureWidget()
+        self.measure_widget = MeasureWidget()
         main_layout.addWidget(self.measure_widget)
     
     def process_file(self, file_path):
@@ -267,7 +252,7 @@ class MainWindow(QMainWindow):
 
 def main():
     app = QApplication(sys.argv)
-    app.setApplicationName("A4 纸张测量工具")
+    app.setApplicationName("JPEG黑线检测工具")
     
     window = MainWindow()
     window.show()

@@ -30,6 +30,8 @@ cmd = [
     "--onedir",
     "--windowed",
     "--add-data", "core;core",
+    "--add-data", "core/distance_calculator.dll;core",
+    "--add-data", "universal_measure.py;.",
     "--hidden-import", "PyQt5.QtCore",
     "--hidden-import", "PyQt5.QtGui",
     "--hidden-import", "PyQt5.QtWidgets",
